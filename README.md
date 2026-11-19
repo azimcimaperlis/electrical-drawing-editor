@@ -8,7 +8,7 @@ Editor web untuk mengubah lukisan skematik elektrik (contoh: QLWB) tanpa AutoCAD
 
 ## Apa boleh buat
 - Tukar teks: dwi-klik teks, atau Cari & ganti (panel kanan).
-- Lukis/padam garisan, kotak, bulatan, teks. Snap ke hujung/tengah/pusat, Ortho (F8 / tahan Shift).
+- Lukis/padam garisan, kotak, bulatan, teks. Snap ke hujung/tengah/pusat, Ortho (F8, atau tahan Ctrl / Shift).
 - Simbol elektrik: kontak NO/NC, gegelung, timer, butang tekan, suis pemilih, suis apung, fius, MCB, MCCB 3P, kontaktor 3P, overload, motor 3~, lampu, transformer, bumi, terminal.
 - Pilih, alih, salin (dengan titik asas), putar 90°, cermin, kumpul/leraikan, undo/redo.
 - **Buka** PDF AutoCAD lain (vektor) — ditukar automatik kepada objek boleh edit.

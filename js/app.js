@@ -387,10 +387,18 @@
   function toolPoint(base, exclude) {
     let [x, y] = toW(mouse.sx, mouse.sy);
     const s = findSnap(x, y, exclude);
+    const straight = base && (opt.ortho || tool.shift);
+    const horiz = straight && Math.abs(x - base[0]) > Math.abs(y - base[1]);
     snapPt = s;
-    if (s) return [s[0], s[1]];
+    if (s) {
+      if (!straight) return [s[0], s[1]];
+      // keep the line straight, but line its end up with the snapped point
+      const p = horiz ? [s[0], base[1]] : [base[0], s[1]];
+      snapPt = [p[0], p[1], s[2]];
+      return [rr(p[0]), rr(p[1])];
+    }
     if (opt.grid) { x = Math.round(x / opt.gridStep) * opt.gridStep; y = Math.round(y / opt.gridStep) * opt.gridStep; }
-    if (base && (opt.ortho || tool.shift)) { if (Math.abs(x - base[0]) > Math.abs(y - base[1])) y = base[1]; else x = base[0]; }
+    if (straight) { if (horiz) y = base[1]; else x = base[0]; }
     return [rr(x), rr(y)];
   }
 
@@ -411,12 +419,12 @@
   // ---------------- tools ----------------
   const HINTS = {
     select: 'Klik objek untuk pilih · Seret untuk alih · Seret kotak di ruang kosong · Dwi-klik teks untuk edit',
-    line: 'Klik titik mula, kemudian klik titik seterusnya · Klik kanan / Esc untuk berhenti · Shift = lurus',
+    line: 'Klik titik mula, kemudian klik titik seterusnya · Klik kanan / Esc untuk berhenti · Tahan Ctrl atau Shift = garis lurus',
     rect: 'Klik satu bucu, kemudian bucu bertentangan',
     circle: 'Klik pusat, kemudian klik untuk jejari',
     text: 'Klik di mana teks hendak diletak, taip, tekan Enter',
     symbol: 'Klik untuk letak simbol · R = putar 90° · Esc = batal',
-    move: 'Klik titik asas, kemudian klik destinasi',
+    move: 'Klik titik asas, kemudian klik destinasi · Tahan Ctrl = lurus',
     copy: 'Klik titik asas, kemudian klik destinasi (boleh berulang) · Esc untuk tamat',
     paste: 'Klik untuk tampal · Esc untuk tamat'
   };
@@ -463,7 +471,7 @@
     if (ev.button === 2) { rightClick(); return; }
     if (ev.button !== 0) return;
     if (inlineEd) commitInline();
-    tool.shift = ev.shiftKey; tool.alt = ev.altKey;
+    tool.shift = ev.shiftKey || ev.ctrlKey || ev.metaKey; tool.alt = ev.altKey;
     const t = tool;
     const p = toolPoint(t.p1 || t.base);
     switch (t.name) {
@@ -524,7 +532,7 @@
   cv.addEventListener('pointermove', ev => {
     updateMouse(ev);
     if (pan) { view.ox = pan.ox + ev.clientX - pan.sx; view.oy = pan.oy + ev.clientY - pan.sy; draw(); return; }
-    tool.shift = ev.shiftKey;
+    tool.shift = ev.shiftKey || ev.ctrlKey || ev.metaKey;
     const t = tool;
     if (t.name === 'select') {
       if (t.grip) {
@@ -697,6 +705,7 @@
     const tag = (ev.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
     const k = ev.key, ctrl = ev.ctrlKey || ev.metaKey;
+    if (k === 'Control' || k === 'Shift' || k === 'Meta') { setStraight(true); return; }
     if (k === ' ') { spaceDown = true; cv.style.cursor = 'grab'; ev.preventDefault(); return; }
     if (ctrl && k.toLowerCase() === 'z') { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
     if (ctrl && k.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
@@ -723,6 +732,13 @@
     if (k.toLowerCase() === 'r') { rotateSel(90); return; }
     if (k.toLowerCase() === 'f') { zoomFit(); return; }
   });
+  function setStraight(on) {
+    if (tool.shift === on) return;
+    tool.shift = on;
+    if (tool.name !== 'select' && tool.cur) { tool.cur = toolPoint(tool.p1 || tool.base, (tool.name === 'move' || tool.name === 'copy') ? sel : null); draw(); }
+  }
+  document.addEventListener('keyup', ev => { if (ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'Meta') setStraight(false); });
+  window.addEventListener('blur', () => setStraight(false));
   document.addEventListener('keyup', ev => { if (ev.key === ' ') { spaceDown = false; cv.style.cursor = tool.name === 'select' ? 'default' : 'crosshair'; } });
 
   function toggle(k) {
