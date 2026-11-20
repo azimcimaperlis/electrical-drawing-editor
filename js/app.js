@@ -874,18 +874,21 @@
     on('pD', el => mutate(() => lines.forEach(e => { if (el.checked) e.dash = true; else delete e.dash; })));
     const setN = (id, k) => on(id, el => { const v = parseFloat(el.value); if (!isNaN(v)) mutate(() => { ents[0][k] = v; }); });
     setN('pX1', 'x1'); setN('pY1', 'y1'); setN('pX2', 'x2'); setN('pY2', 'y2'); setN('pCX', 'cx'); setN('pCY', 'cy'); setN('pRad', 'r'); setN('pTX', 'x'); setN('pTY', 'y');
-    const alignTexts = k => {
-      const vals = texts.map(e => e[k]).sort((a, b) => a - b);
-      const v = vals[Math.floor((vals.length - 1) / 2)]; // median: most texts stay where they are
-      const n = texts.filter(e => Math.abs(e[k] - v) > 1e-6).length;
-      if (!n) return toast('Teks sudah sejajar');
-      mutate(() => texts.forEach(e => { e[k] = v; }));
-      toast(n + ' teks dijajarkan');
-    };
     const pAlY = $('#pAlY'); if (pAlY) pAlY.onclick = () => alignTexts('y');
     const pAlX = $('#pAlX'); if (pAlX) pAlX.onclick = () => alignTexts('x');
     const pSt = $('#pStraight'); if (pSt) pSt.onclick = () => straightenIds([...sel]);
     const pS = $('#pS'); if (pS) pS.addEventListener('keydown', ev => { if (ev.key === 'Enter') pS.blur(); });
+  }
+  // put selected texts on one horizontal (k='y') or vertical (k='x') line
+  function alignTexts(k) {
+    const texts = [...sel].map(id => byId.get(id)).filter(e => e && e.t === 'text');
+    if (texts.length < 2) return toast('Pilih 2 atau lebih teks dahulu (seret kotak sekelilingnya), kemudian tekan butang ini', 4000);
+    const vals = texts.map(e => e[k]).sort((a, b) => a - b);
+    const v = vals[Math.floor((vals.length - 1) / 2)]; // median: most texts stay where they are
+    const n = texts.filter(e => Math.abs(e[k] - v) > 1e-6).length;
+    if (!n) return toast('Teks sudah sejajar');
+    mutate(() => texts.forEach(e => { e[k] = v; }));
+    toast(n + ' teks dijajarkan');
   }
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
@@ -1251,7 +1254,7 @@
   }
   function wire() {
     document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
-    const act = { undo, redo, del: delSel, rot: () => rotateSel(90), mirror: mirrorSel, copyc: () => setTool('copy'), fit: zoomFit, group: groupSel, ungroup: ungroupSel,
+    const act = { alignY: () => alignTexts('y'), alignX: () => alignTexts('x'), undo, redo, del: delSel, rot: () => rotateSel(90), mirror: mirrorSel, copyc: () => setTool('copy'), fit: zoomFit, group: groupSel, ungroup: ungroupSel,
       zin: () => zoomAt(W / 2, H / 2, 1.4), zout: () => zoomAt(W / 2, H / 2, 1 / 1.4),
       open: () => $('#fileIn').click(), save: saveProject, pdf: exportPDF, dxf: exportDXF,
       newdoc: newDoc, blank: () => { emptyDismissed = true; updateEmpty(); setTool('line'); },
