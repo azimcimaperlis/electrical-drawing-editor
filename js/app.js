@@ -432,6 +432,16 @@
     t.grip.moved = true; t.grip.g = Object.assign({}, t.grip.g, { x: p[0], y: p[1] });
     draw();
   }
+  function gripCommit() {
+    const t = tool;
+    if (t.grip.moved) { pushUndo(t.grip.snap); roundEnt(byId.get(t.grip.id)); changed(); }
+    t.grip = null; snapPt = null; $('#hint').textContent = HINTS[t.name] || ''; draw();
+  }
+  function gripCancel() {
+    const t = tool;
+    doc.entities = JSON.parse(t.grip.snap); reindex();
+    t.grip = null; snapPt = null; $('#hint').textContent = HINTS[t.name] || ''; changed(true);
+  }
   function gripAt(sx, sy) { for (const g of grips()) { const p = toS(g.x, g.y); if (Math.abs(p[0] - sx) < 7 && Math.abs(p[1] - sy) < 7) return g; } return null; }
 
   // ---------------- tools ----------------
@@ -491,11 +501,12 @@
     if (inlineEd) commitInline();
     tool.shift = ev.shiftKey || ev.ctrlKey || ev.metaKey; tool.alt = ev.altKey;
     const t = tool;
+    if (t.grip && t.grip.hot) { gripMove(); gripCommit(); return; } // second click places a picked grip
     const p = toolPoint(t.p1 || t.base);
     switch (t.name) {
       case 'select': {
         const g = gripAt(mouse.sx, mouse.sy);
-        if (g) { t.grip = { g, id: [...sel][0], snap: snapshot(), moved: false }; return; }
+        if (g) { t.grip = { g, id: [...sel][0], snap: snapshot(), moved: false, sx: mouse.sx, sy: mouse.sy }; return; }
         const hit = pick(mouse.x, mouse.y);
         if (hit) {
           const grp = groupOf(hit);
@@ -553,7 +564,7 @@
     tool.shift = ev.shiftKey || ev.ctrlKey || ev.metaKey;
     const t = tool;
     if (t.name === 'select') {
-      if (t.grip) { gripMove(); return; }
+      if (t.grip) { if (t.grip.hot || t.grip.moved || Math.hypot(mouse.sx - t.grip.sx, mouse.sy - t.grip.sy) >= 4) gripMove(); return; }
       if (t.drag) {
         if (!t.drag.moved && Math.hypot(mouse.sx - t.drag.sx, mouse.sy - t.drag.sy) < 4) return;
         t.drag.moved = true;
@@ -579,7 +590,10 @@
   cv.addEventListener('pointerup', ev => {
     if (pan) { pan = null; cv.style.cursor = tool.name === 'select' ? 'default' : 'crosshair'; return; }
     const t = tool;
-    if (t.grip) { if (t.grip.moved) { pushUndo(t.grip.snap); roundEnt(byId.get(t.grip.id)); changed(); } t.grip = null; }
+    if (t.grip && !t.grip.hot) {
+      if (t.grip.moved) gripCommit();
+      else { t.grip.hot = true; $('#hint').textContent = 'Gerakkan tetikus, klik untuk letak hujung · Tahan Ctrl = lurus · Esc = batal'; } // click (no drag): pick grip
+    }
     if (t.drag) { if (t.drag.moved) { pushUndo(t.drag.snap); changed(); } t.drag = null; snapPt = null; }
     if (t.box) {
       const b = t.box, crossing = mouse.sx < b.sx;
@@ -728,6 +742,7 @@
     if (ctrl && k.toLowerCase() === 'g') { ev.preventDefault(); ev.shiftKey ? ungroupSel() : groupSel(); return; }
     if (ctrl && k.toLowerCase() === 'f') { ev.preventDefault(); $('#findTxt').focus(); return; }
     if (ctrl) return;
+    if (k === 'Escape' && tool.grip) { gripCancel(); return; }
     if (k === 'Escape') { if (tool.name === 'line' && tool.p1) { tool.p1 = null; draw(); } else if (tool.name !== 'select') setTool('select'); else { sel = new Set(); updatePanel(); draw(); } return; }
     if (k === 'Delete' || k === 'Backspace') { ev.preventDefault(); delSel(); return; }
     if (k === 'F8') { ev.preventDefault(); toggle('ortho'); return; }
