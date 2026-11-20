@@ -386,11 +386,11 @@
     return best || near;
   }
   // point the tool should use: snap > ortho > grid > raw
-  function toolPoint(base, exclude) {
+  function toolPoint(base, exclude, axis) {
     let [x, y] = toW(mouse.sx, mouse.sy);
     const s = findSnap(x, y, exclude);
-    const straight = base && (opt.ortho || tool.shift);
-    const horiz = straight && Math.abs(x - base[0]) > Math.abs(y - base[1]);
+    const straight = base && (axis || opt.ortho || tool.shift);
+    const horiz = axis ? axis === 'h' : straight && Math.abs(x - base[0]) > Math.abs(y - base[1]);
     snapPt = s;
     if (s) {
       if (!straight) return [s[0], s[1]];
@@ -425,7 +425,7 @@
   function gripMove() {
     const t = tool, e = byId.get(t.grip.id), k = t.grip.g.k;
     if (!e) return;
-    const p = toolPoint(gripBase(e, k), new Set([t.grip.id]));
+    const p = toolPoint(gripBase(e, k), new Set([t.grip.id]), tool.alt ? null : t.grip.axis);
     if (e.t === 'line') { if (k === 1) { e.x1 = p[0]; e.y1 = p[1]; } else { e.x2 = p[0]; e.y2 = p[1]; } }
     else if (e.t === 'pline') e.pts[k] = [p[0], p[1]];
     else if (e.t === 'circle') e.r = rr(Math.max(0.05, Math.hypot(p[0] - e.cx, p[1] - e.cy)));
@@ -456,6 +456,18 @@
     const t = tool;
     doc.entities = JSON.parse(t.grip.snap); reindex();
     t.grip = null; snapPt = null; $('#hint').textContent = HINTS[t.name] || ''; changed(true);
+  }
+  // end point of any (ungrouped) line under the cursor, so a line can be extended without selecting it first
+  function lineEndAt(sx, sy) {
+    let best = null, bd = 7;
+    for (const e of doc.entities) {
+      if (e.t !== 'line' || (e.gid && !tool.alt)) continue;
+      for (const k of [1, 2]) {
+        const q = toS(k === 1 ? e.x1 : e.x2, k === 1 ? e.y1 : e.y2), d = Math.max(Math.abs(q[0] - sx), Math.abs(q[1] - sy));
+        if (d < bd) { bd = d; best = { e, g: { x: k === 1 ? e.x1 : e.x2, y: k === 1 ? e.y1 : e.y2, k } }; }
+      }
+    }
+    return best;
   }
   function gripAt(sx, sy) { for (const g of grips()) { const p = toS(g.x, g.y); if (Math.abs(p[0] - sx) < 7 && Math.abs(p[1] - sy) < 7) return g; } return null; }
 
@@ -521,8 +533,15 @@
     const p = toolPoint(t.p1 || t.base);
     switch (t.name) {
       case 'select': {
-        const g = gripAt(mouse.sx, mouse.sy);
-        if (g) { t.grip = { g, id: [...sel][0], snap: snapshot(), moved: false, sx: mouse.sx, sy: mouse.sy, ctrl: ev.ctrlKey || ev.metaKey }; return; }
+        let g = gripAt(mouse.sx, mouse.sy);
+        if (!g && !ev.shiftKey) { const le = lineEndAt(mouse.sx, mouse.sy); if (le) { sel = new Set([le.e.id]); g = le.g; updatePanel(); } }
+        if (g) {
+          const ge = byId.get([...sel][0]);
+          // a line that is already horizontal/vertical stays on its axis while its end is dragged
+          const axis = ge && ge.t === 'line' ? (Math.abs(ge.y1 - ge.y2) < 0.01 ? 'h' : Math.abs(ge.x1 - ge.x2) < 0.01 ? 'v' : null) : null;
+          t.grip = { g, id: ge.id, snap: snapshot(), moved: false, sx: mouse.sx, sy: mouse.sy, ctrl: ev.ctrlKey || ev.metaKey, axis };
+          return;
+        }
         const hit = pick(mouse.x, mouse.y);
         if (hit) {
           const grp = groupOf(hit);
