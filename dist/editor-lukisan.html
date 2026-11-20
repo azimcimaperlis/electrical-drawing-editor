@@ -251,7 +251,7 @@ button:disabled { opacity: .5; cursor: default; }
         <h2>Cara guna</h2>
         <ol>
           <li><b>Zum</b> dengan roda tetikus. <b>Gerak paparan</b>: tahan butang tengah tetikus atau Space + seret.</li>
-          <li><b>Tukar teks</b>: dwi-klik pada teks, taip, tekan Enter. Atau guna <b>Cari &amp; ganti</b> di panel kanan.</li>
+          <li><b>Tukar teks</b>: dwi-klik pada teks, taip, tekan Enter. Atau guna <b>Cari &amp; ganti</b> di panel kanan. <b>Sejajarkan teks</b>: pilih beberapa teks (seret kotak), tekan <b>Sejajar mendatar</b> atau <b>Sejajar menegak</b> di panel Butiran.</li>
           <li><b>Pilih</b>: klik objek. Shift+klik tambah. Seret kotak kiri→kanan pilih yang di dalam; kanan→kiri pilih yang tersentuh.</li>
           <li><b>Alih</b>: seret objek terpilih. Anak panah = anjak 0.5 mm (Shift = 5 mm). <b>Panjangkan garisan</b>: seret hujung garisan (tak perlu pilih dahulu), atau klik hujungnya dan klik lagi di tempat baru. Garisan yang lurus kekal lurus secara automatik; tahan Alt untuk bengkokkan. Garisan senget: tahan Ctrl semasa seret, atau Ctrl+klik garisan untuk luruskan.</li>
           <li><b>Lukis wayar</b>: tekan L, klik titik demi titik, klik kanan untuk berhenti. Tahan <b>Ctrl</b> untuk garis lurus. Kotak hijau = snap ke hujung garisan.</li>
@@ -2137,6 +2137,8 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
         '<label class="fld"><span>Sudut (°)</span><input id="pR" type="number" step="90" value="' + (rs.length === 1 ? rs[0] : '') + '" placeholder="pelbagai"></label></div>';
       const al = [...new Set(texts.map(e => e.align || 'left'))];
       h += '<label class="fld"><span>Jajaran</span><select id="pA"><option value="">' + (al.length > 1 ? 'pelbagai' : '') + '</option>' + [['left', 'Kiri'], ['center', 'Tengah'], ['right', 'Kanan']].map(a => '<option value="' + a[0] + '"' + (al.length === 1 && al[0] === a[0] ? ' selected' : '') + '>' + a[1] + '</option>').join('') + '</select></label>';
+      if (texts.length > 1) h += '<div class="btnrow"><button type="button" id="pAlY" title="Letak semua teks terpilih pada satu garisan mendatar (Y sama)">Sejajar mendatar</button>' +
+        '<button type="button" id="pAlX" title="Letak semua teks terpilih pada satu garisan menegak (X sama)">Sejajar menegak</button></div>';
     }
     if (ents.length === 1) {
       const e = ents[0];
@@ -2163,6 +2165,16 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
     on('pD', el => mutate(() => lines.forEach(e => { if (el.checked) e.dash = true; else delete e.dash; })));
     const setN = (id, k) => on(id, el => { const v = parseFloat(el.value); if (!isNaN(v)) mutate(() => { ents[0][k] = v; }); });
     setN('pX1', 'x1'); setN('pY1', 'y1'); setN('pX2', 'x2'); setN('pY2', 'y2'); setN('pCX', 'cx'); setN('pCY', 'cy'); setN('pRad', 'r'); setN('pTX', 'x'); setN('pTY', 'y');
+    const alignTexts = k => {
+      const vals = texts.map(e => e[k]).sort((a, b) => a - b);
+      const v = vals[Math.floor((vals.length - 1) / 2)]; // median: most texts stay where they are
+      const n = texts.filter(e => Math.abs(e[k] - v) > 1e-6).length;
+      if (!n) return toast('Teks sudah sejajar');
+      mutate(() => texts.forEach(e => { e[k] = v; }));
+      toast(n + ' teks dijajarkan');
+    };
+    const pAlY = $('#pAlY'); if (pAlY) pAlY.onclick = () => alignTexts('y');
+    const pAlX = $('#pAlX'); if (pAlX) pAlX.onclick = () => alignTexts('x');
     const pSt = $('#pStraight'); if (pSt) pSt.onclick = () => straightenIds([...sel]);
     const pS = $('#pS'); if (pS) pS.addEventListener('keydown', ev => { if (ev.key === 'Enter') pS.blur(); });
   }

@@ -846,6 +846,8 @@
         '<label class="fld"><span>Sudut (°)</span><input id="pR" type="number" step="90" value="' + (rs.length === 1 ? rs[0] : '') + '" placeholder="pelbagai"></label></div>';
       const al = [...new Set(texts.map(e => e.align || 'left'))];
       h += '<label class="fld"><span>Jajaran</span><select id="pA"><option value="">' + (al.length > 1 ? 'pelbagai' : '') + '</option>' + [['left', 'Kiri'], ['center', 'Tengah'], ['right', 'Kanan']].map(a => '<option value="' + a[0] + '"' + (al.length === 1 && al[0] === a[0] ? ' selected' : '') + '>' + a[1] + '</option>').join('') + '</select></label>';
+      if (texts.length > 1) h += '<div class="btnrow"><button type="button" id="pAlY" title="Letak semua teks terpilih pada satu garisan mendatar (Y sama)">Sejajar mendatar</button>' +
+        '<button type="button" id="pAlX" title="Letak semua teks terpilih pada satu garisan menegak (X sama)">Sejajar menegak</button></div>';
     }
     if (ents.length === 1) {
       const e = ents[0];
@@ -872,6 +874,16 @@
     on('pD', el => mutate(() => lines.forEach(e => { if (el.checked) e.dash = true; else delete e.dash; })));
     const setN = (id, k) => on(id, el => { const v = parseFloat(el.value); if (!isNaN(v)) mutate(() => { ents[0][k] = v; }); });
     setN('pX1', 'x1'); setN('pY1', 'y1'); setN('pX2', 'x2'); setN('pY2', 'y2'); setN('pCX', 'cx'); setN('pCY', 'cy'); setN('pRad', 'r'); setN('pTX', 'x'); setN('pTY', 'y');
+    const alignTexts = k => {
+      const vals = texts.map(e => e[k]).sort((a, b) => a - b);
+      const v = vals[Math.floor((vals.length - 1) / 2)]; // median: most texts stay where they are
+      const n = texts.filter(e => Math.abs(e[k] - v) > 1e-6).length;
+      if (!n) return toast('Teks sudah sejajar');
+      mutate(() => texts.forEach(e => { e[k] = v; }));
+      toast(n + ' teks dijajarkan');
+    };
+    const pAlY = $('#pAlY'); if (pAlY) pAlY.onclick = () => alignTexts('y');
+    const pAlX = $('#pAlX'); if (pAlX) pAlX.onclick = () => alignTexts('x');
     const pSt = $('#pStraight'); if (pSt) pSt.onclick = () => straightenIds([...sel]);
     const pS = $('#pS'); if (pS) pS.addEventListener('keydown', ev => { if (ev.key === 'Enter') pS.blur(); });
   }
