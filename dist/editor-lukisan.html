@@ -253,7 +253,7 @@ button:disabled { opacity: .5; cursor: default; }
           <li><b>Zum</b> dengan roda tetikus. <b>Gerak paparan</b>: tahan butang tengah tetikus atau Space + seret.</li>
           <li><b>Tukar teks</b>: dwi-klik pada teks, taip, tekan Enter. Atau guna <b>Cari &amp; ganti</b> di panel kanan.</li>
           <li><b>Pilih</b>: klik objek. Shift+klik tambah. Seret kotak kiri→kanan pilih yang di dalam; kanan→kiri pilih yang tersentuh.</li>
-          <li><b>Alih</b>: seret objek terpilih. Anak panah = anjak 0.5 mm (Shift = 5 mm).</li>
+          <li><b>Alih</b>: seret objek terpilih. Anak panah = anjak 0.5 mm (Shift = 5 mm). <b>Panjangkan garisan</b>: pilih garisan, seret petak di hujungnya. Tahan <b>Ctrl</b> semasa seret supaya garisan kekal lurus.</li>
           <li><b>Lukis wayar</b>: tekan L, klik titik demi titik, klik kanan untuk berhenti. Tahan <b>Ctrl</b> untuk garis lurus. Kotak hijau = snap ke hujung garisan.</li>
           <li><b>Simbol</b>: cari ikut nama atau kategori di panel kanan, klik simbol, tekan R untuk putar, klik pada lukisan untuk letak.</li>
           <li><b>Pustaka simbol</b>: setiap kali PDF atau projek dibuka, simbol di dalamnya dikesan dan boleh disimpan mengikut kategori. Untuk simpan sendiri: pilih objek simbol, tekan <b>Simpan pilihan</b>. Butang ✎ untuk tukar nama/kategori atau padam.</li>
@@ -1707,6 +1707,22 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
       default: return [];
     }
   }
+  // fixed point a dragged grip is measured from (other end of the line / neighbouring vertex)
+  function gripBase(e, k) {
+    if (e.t === 'line') return k === 1 ? [e.x2, e.y2] : [e.x1, e.y1];
+    if (e.t === 'pline') { const n = e.pts.length, j = k > 0 ? k - 1 : (e.closed ? n - 1 : 1); return n > 1 ? e.pts[j] : null; }
+    return null;
+  }
+  function gripMove() {
+    const t = tool, e = byId.get(t.grip.id), k = t.grip.g.k;
+    if (!e) return;
+    const p = toolPoint(gripBase(e, k), new Set([t.grip.id]));
+    if (e.t === 'line') { if (k === 1) { e.x1 = p[0]; e.y1 = p[1]; } else { e.x2 = p[0]; e.y2 = p[1]; } }
+    else if (e.t === 'pline') e.pts[k] = [p[0], p[1]];
+    else if (e.t === 'circle') e.r = rr(Math.max(0.05, Math.hypot(p[0] - e.cx, p[1] - e.cy)));
+    t.grip.moved = true; t.grip.g = Object.assign({}, t.grip.g, { x: p[0], y: p[1] });
+    draw();
+  }
   function gripAt(sx, sy) { for (const g of grips()) { const p = toS(g.x, g.y); if (Math.abs(p[0] - sx) < 7 && Math.abs(p[1] - sy) < 7) return g; } return null; }
 
   // ---------------- tools ----------------
@@ -1828,15 +1844,7 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
     tool.shift = ev.shiftKey || ev.ctrlKey || ev.metaKey;
     const t = tool;
     if (t.name === 'select') {
-      if (t.grip) {
-        const p = toolPoint(null, new Set([t.grip.id]));
-        const e = byId.get(t.grip.id), k = t.grip.g.k;
-        if (e.t === 'line') { if (k === 1) { e.x1 = p[0]; e.y1 = p[1]; } else { e.x2 = p[0]; e.y2 = p[1]; } }
-        else if (e.t === 'pline') e.pts[k] = [p[0], p[1]];
-        else if (e.t === 'circle') e.r = rr(Math.max(0.05, Math.hypot(p[0] - e.cx, p[1] - e.cy)));
-        t.grip.moved = true; t.grip.g = Object.assign({}, t.grip.g, { x: p[0], y: p[1] });
-        draw(); return;
-      }
+      if (t.grip) { gripMove(); return; }
       if (t.drag) {
         if (!t.drag.moved && Math.hypot(mouse.sx - t.drag.sx, mouse.sy - t.drag.sy) < 4) return;
         t.drag.moved = true;
@@ -2029,6 +2037,7 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
   function setStraight(on) {
     if (tool.shift === on) return;
     tool.shift = on;
+    if (tool.grip) { gripMove(); return; }
     if (tool.name !== 'select' && tool.cur) { tool.cur = toolPoint(tool.p1 || tool.base, (tool.name === 'move' || tool.name === 'copy') ? sel : null); draw(); }
   }
   document.addEventListener('keyup', ev => { if (ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'Meta') setStraight(false); });

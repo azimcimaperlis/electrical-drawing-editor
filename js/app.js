@@ -416,6 +416,22 @@
       default: return [];
     }
   }
+  // fixed point a dragged grip is measured from (other end of the line / neighbouring vertex)
+  function gripBase(e, k) {
+    if (e.t === 'line') return k === 1 ? [e.x2, e.y2] : [e.x1, e.y1];
+    if (e.t === 'pline') { const n = e.pts.length, j = k > 0 ? k - 1 : (e.closed ? n - 1 : 1); return n > 1 ? e.pts[j] : null; }
+    return null;
+  }
+  function gripMove() {
+    const t = tool, e = byId.get(t.grip.id), k = t.grip.g.k;
+    if (!e) return;
+    const p = toolPoint(gripBase(e, k), new Set([t.grip.id]));
+    if (e.t === 'line') { if (k === 1) { e.x1 = p[0]; e.y1 = p[1]; } else { e.x2 = p[0]; e.y2 = p[1]; } }
+    else if (e.t === 'pline') e.pts[k] = [p[0], p[1]];
+    else if (e.t === 'circle') e.r = rr(Math.max(0.05, Math.hypot(p[0] - e.cx, p[1] - e.cy)));
+    t.grip.moved = true; t.grip.g = Object.assign({}, t.grip.g, { x: p[0], y: p[1] });
+    draw();
+  }
   function gripAt(sx, sy) { for (const g of grips()) { const p = toS(g.x, g.y); if (Math.abs(p[0] - sx) < 7 && Math.abs(p[1] - sy) < 7) return g; } return null; }
 
   // ---------------- tools ----------------
@@ -537,15 +553,7 @@
     tool.shift = ev.shiftKey || ev.ctrlKey || ev.metaKey;
     const t = tool;
     if (t.name === 'select') {
-      if (t.grip) {
-        const p = toolPoint(null, new Set([t.grip.id]));
-        const e = byId.get(t.grip.id), k = t.grip.g.k;
-        if (e.t === 'line') { if (k === 1) { e.x1 = p[0]; e.y1 = p[1]; } else { e.x2 = p[0]; e.y2 = p[1]; } }
-        else if (e.t === 'pline') e.pts[k] = [p[0], p[1]];
-        else if (e.t === 'circle') e.r = rr(Math.max(0.05, Math.hypot(p[0] - e.cx, p[1] - e.cy)));
-        t.grip.moved = true; t.grip.g = Object.assign({}, t.grip.g, { x: p[0], y: p[1] });
-        draw(); return;
-      }
+      if (t.grip) { gripMove(); return; }
       if (t.drag) {
         if (!t.drag.moved && Math.hypot(mouse.sx - t.drag.sx, mouse.sy - t.drag.sy) < 4) return;
         t.drag.moved = true;
@@ -738,6 +746,7 @@
   function setStraight(on) {
     if (tool.shift === on) return;
     tool.shift = on;
+    if (tool.grip) { gripMove(); return; }
     if (tool.name !== 'select' && tool.cur) { tool.cur = toolPoint(tool.p1 || tool.base, (tool.name === 'move' || tool.name === 'copy') ? sel : null); draw(); }
   }
   document.addEventListener('keyup', ev => { if (ev.key === 'Control' || ev.key === 'Shift' || ev.key === 'Meta') setStraight(false); });
