@@ -253,7 +253,7 @@ button:disabled { opacity: .5; cursor: default; }
           <li><b>Zum</b> dengan roda tetikus. <b>Gerak paparan</b>: tahan butang tengah tetikus atau Space + seret.</li>
           <li><b>Tukar teks</b>: dwi-klik pada teks, taip, tekan Enter. Atau guna <b>Cari &amp; ganti</b> di panel kanan.</li>
           <li><b>Pilih</b>: klik objek. Shift+klik tambah. Seret kotak kiri→kanan pilih yang di dalam; kanan→kiri pilih yang tersentuh.</li>
-          <li><b>Alih</b>: seret objek terpilih. Anak panah = anjak 0.5 mm (Shift = 5 mm). <b>Panjangkan garisan</b>: pilih garisan, seret petak di hujungnya — atau klik petak itu, gerakkan tetikus, klik lagi untuk letak. Tahan <b>Ctrl</b> supaya garisan kekal lurus. Esc = batal.</li>
+          <li><b>Alih</b>: seret objek terpilih. Anak panah = anjak 0.5 mm (Shift = 5 mm). <b>Panjangkan garisan</b>: pilih garisan, seret petak di hujungnya — atau klik petak itu, gerakkan tetikus, klik lagi untuk letak. Tahan <b>Ctrl</b> supaya garisan kekal lurus. Esc = batal. <b>Garisan senget?</b> Ctrl+klik pada garisan (atau hujungnya) untuk luruskan terus, atau tekan <b>Luruskan garisan</b> di panel Butiran.</li>
           <li><b>Lukis wayar</b>: tekan L, klik titik demi titik, klik kanan untuk berhenti. Tahan <b>Ctrl</b> untuk garis lurus. Kotak hijau = snap ke hujung garisan.</li>
           <li><b>Simbol</b>: cari ikut nama atau kategori di panel kanan, klik simbol, tekan R untuk putar, klik pada lukisan untuk letak.</li>
           <li><b>Pustaka simbol</b>: setiap kali PDF atau projek dibuka, simbol di dalamnya dikesan dan boleh disimpan mengikut kategori. Untuk simpan sendiri: pilih objek simbol, tekan <b>Simpan pilihan</b>. Butang ✎ untuk tukar nama/kategori atau padam.</li>
@@ -1723,6 +1723,21 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
     t.grip.moved = true; t.grip.g = Object.assign({}, t.grip.g, { x: p[0], y: p[1] });
     draw();
   }
+  // make lines exactly horizontal or vertical; end k (1/2) moves, the other end stays. k omitted: end 2 moves.
+  function straightenIds(ids, k) {
+    const lines = ids.map(id => byId.get(id)).filter(e => e && e.t === 'line');
+    if (!lines.length) return toast('Pilih garisan dahulu');
+    const todo = lines.filter(e => Math.abs(e.x1 - e.x2) > 1e-6 && Math.abs(e.y1 - e.y2) > 1e-6);
+    if (!todo.length) { toast(lines.length > 1 ? 'Semua garisan sudah lurus' : 'Garisan sudah lurus'); draw(); return; }
+    mutate(() => {
+      for (const e of todo) {
+        const horiz = Math.abs(e.x2 - e.x1) >= Math.abs(e.y2 - e.y1);
+        if ((k || 2) === 1) { if (horiz) e.y1 = e.y2; else e.x1 = e.x2; }
+        else { if (horiz) e.y2 = e.y1; else e.x2 = e.x1; }
+      }
+    });
+    toast(todo.length > 1 ? todo.length + ' garisan diluruskan' : 'Garisan diluruskan');
+  }
   function gripCommit() {
     const t = tool;
     if (t.grip.moved) { pushUndo(t.grip.snap); roundEnt(byId.get(t.grip.id)); changed(); }
@@ -1787,8 +1802,9 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
     cv.setPointerCapture(ev.pointerId);
     updateMouse(ev);
     if (ev.button === 1 || (ev.button === 0 && spaceDown) || tool.name === 'pan') { pan = { sx: ev.clientX, sy: ev.clientY, ox: view.ox, oy: view.oy }; cv.style.cursor = 'grabbing'; return; }
-    if (ev.button === 2) { rightClick(); return; }
-    if (ev.button !== 0) return;
+    const macCtrlClick = ev.button === 2 && ev.ctrlKey && /Mac/i.test(navigator.platform || navigator.userAgent) && tool.name === 'select';
+    if (ev.button === 2 && !macCtrlClick) { rightClick(); return; }
+    if (ev.button !== 0 && !macCtrlClick) return;
     if (inlineEd) commitInline();
     tool.shift = ev.shiftKey || ev.ctrlKey || ev.metaKey; tool.alt = ev.altKey;
     const t = tool;
@@ -1797,14 +1813,14 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
     switch (t.name) {
       case 'select': {
         const g = gripAt(mouse.sx, mouse.sy);
-        if (g) { t.grip = { g, id: [...sel][0], snap: snapshot(), moved: false, sx: mouse.sx, sy: mouse.sy }; return; }
+        if (g) { t.grip = { g, id: [...sel][0], snap: snapshot(), moved: false, sx: mouse.sx, sy: mouse.sy, ctrl: ev.ctrlKey || ev.metaKey }; return; }
         const hit = pick(mouse.x, mouse.y);
         if (hit) {
           const grp = groupOf(hit);
           if (ev.shiftKey) { const has = sel.has(hit.id); for (const e of grp) has ? sel.delete(e.id) : sel.add(e.id); }
           else if (!sel.has(hit.id)) sel = new Set(grp.map(e => e.id));
           const base = findSnap(mouse.x, mouse.y);
-          t.drag = { base: base ? [base[0], base[1]] : [mouse.x, mouse.y], applied: [0, 0], snap: snapshot(), moved: false, sx: mouse.sx, sy: mouse.sy };
+          t.drag = { base: base ? [base[0], base[1]] : [mouse.x, mouse.y], applied: [0, 0], snap: snapshot(), moved: false, sx: mouse.sx, sy: mouse.sy, ctrlLine: (ev.ctrlKey || ev.metaKey) && hit.t === 'line' ? hit.id : null };
         } else {
           if (!ev.shiftKey) sel = new Set();
           t.box = { sx: mouse.sx, sy: mouse.sy, x: mouse.x, y: mouse.y };
@@ -1883,9 +1899,14 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
     const t = tool;
     if (t.grip && !t.grip.hot) {
       if (t.grip.moved) gripCommit();
+      else if (t.grip.ctrl) { const id = t.grip.id, k = t.grip.g.k; t.grip = null; straightenIds([id], k); } // Ctrl+click on an end: straighten now
       else { t.grip.hot = true; $('#hint').textContent = 'Gerakkan tetikus, klik untuk letak hujung · Tahan Ctrl = lurus · Esc = batal'; } // click (no drag): pick grip
     }
-    if (t.drag) { if (t.drag.moved) { pushUndo(t.drag.snap); changed(); } t.drag = null; snapPt = null; }
+    if (t.drag) {
+      if (t.drag.moved) { pushUndo(t.drag.snap); changed(); }
+      else if (t.drag.ctrlLine) { const e = byId.get(t.drag.ctrlLine); if (e) { sel = new Set([e.id]); straightenIds([e.id], Math.hypot(mouse.x - e.x1, mouse.y - e.y1) < Math.hypot(mouse.x - e.x2, mouse.y - e.y2) ? 1 : 2); } }
+      t.drag = null; snapPt = null;
+    }
     if (t.box) {
       const b = t.box, crossing = mouse.sx < b.sx;
       const x0 = Math.min(b.x, mouse.x), x1 = Math.max(b.x, mouse.x), y0 = Math.min(b.y, mouse.y), y1 = Math.max(b.y, mouse.y);
@@ -2111,6 +2132,7 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
     h += '<label class="fld"><span>Warna</span><select id="pC"><option value="">' + (cols.length > 1 ? 'pelbagai' : '') + '</option>' + COLORS.map(c => '<option value="' + c[0] + '"' + (cols.length === 1 && cols[0] === c[0] ? ' selected' : '') + '>' + c[1] + '</option>').join('') + '</select></label>';
     const lines = ents.filter(e => e.t === 'line' || e.t === 'pline' || e.t === 'arc' || e.t === 'circle');
     if (lines.length) h += '<label class="chk"><input id="pD" type="checkbox"' + (lines.every(e => e.dash) ? ' checked' : '') + '> Garis putus-putus</label>';
+    if (ents.some(e => e.t === 'line')) h += '<div class="btnrow"><button type="button" id="pStraight" title="Jadikan garisan terpilih betul-betul mendatar / menegak (Ctrl+klik pada garisan)">Luruskan garisan</button></div>';
     if (ents.some(e => e.gid)) h += '<p class="muted">Sebahagian daripada kumpulan. Tahan Alt sambil klik untuk pilih satu bahagian sahaja.</p>';
     box.innerHTML = h;
     const on = (id, fn) => { const el = $('#' + id); if (el) el.onchange = () => fn(el); };
@@ -2122,6 +2144,7 @@ window.SHARED_SYMBOLS = {"version":1,"symbols":[{"id":"sh1","name":"Kontak suis 
     on('pD', el => mutate(() => lines.forEach(e => { if (el.checked) e.dash = true; else delete e.dash; })));
     const setN = (id, k) => on(id, el => { const v = parseFloat(el.value); if (!isNaN(v)) mutate(() => { ents[0][k] = v; }); });
     setN('pX1', 'x1'); setN('pY1', 'y1'); setN('pX2', 'x2'); setN('pY2', 'y2'); setN('pCX', 'cx'); setN('pCY', 'cy'); setN('pRad', 'r'); setN('pTX', 'x'); setN('pTY', 'y');
+    const pSt = $('#pStraight'); if (pSt) pSt.onclick = () => straightenIds([...sel]);
     const pS = $('#pS'); if (pS) pS.addEventListener('keydown', ev => { if (ev.key === 'Enter') pS.blur(); });
   }
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
