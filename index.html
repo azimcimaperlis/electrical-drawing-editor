@@ -20,7 +20,7 @@
       <button type="button" data-act="save" title="Simpan projek untuk sambung edit kemudian (Ctrl+S)">Simpan projek</button>
       <button type="button" class="pri" data-act="pdf" title="Eksport ke PDF untuk cetak / hantar">Eksport PDF</button>
       <button type="button" class="pri" data-act="dxf" title="Eksport ke DXF untuk dibuka dalam AutoCAD">Eksport DXF</button>
-      <button type="button" data-act="reset" title="Buang semua perubahan dan muat semula lukisan asal QLWB">Asal</button>
+      <button type="button" data-act="newdoc" title="Kosongkan kanvas dan mula lukisan baru">Baru</button>
       <button type="button" data-act="help" title="Panduan ringkas" aria-label="Panduan">?</button>
       <input id="fileIn" type="file" accept=".pdf,.json,application/pdf,application/json" hidden>
     </div>
@@ -56,6 +56,17 @@
         <button type="button" data-act="fit" title="Muat penuh (F)">Penuh</button>
       </div>
       <div id="toast" class="toast" hidden role="status"></div>
+      <div id="empty" class="empty" hidden>
+        <div class="emptycard">
+          <h2>Mula lukisan baru</h2>
+          <p>Buka PDF lukisan AutoCAD (vektor) atau fail projek <b>.json</b>. Simbol elektrik dalam fail itu akan dikesan secara automatik supaya boleh disimpan ke pustaka simbol anda.</p>
+          <div class="btnrow">
+            <button type="button" class="pri" data-act="open">Buka fail</button>
+            <button type="button" data-act="blank">Lukis dari kosong</button>
+          </div>
+          <p class="muted small">Atau seret fail ke sini. <button type="button" class="link" data-act="sample">Cuba contoh QLWB</button></p>
+        </div>
+      </div>
       <section id="help" class="help" hidden>
         <h2>Cara guna</h2>
         <ol>
@@ -64,9 +75,10 @@
           <li><b>Pilih</b>: klik objek. Shift+klik tambah. Seret kotak kiri→kanan pilih yang di dalam; kanan→kiri pilih yang tersentuh.</li>
           <li><b>Alih</b>: seret objek terpilih. Anak panah = anjak 0.5 mm (Shift = 5 mm).</li>
           <li><b>Lukis wayar</b>: tekan L, klik titik demi titik, klik kanan untuk berhenti. Tahan <b>Ctrl</b> untuk garis lurus. Kotak hijau = snap ke hujung garisan.</li>
-          <li><b>Simbol</b>: klik simbol di panel kanan, tekan R untuk putar, klik pada lukisan untuk letak.</li>
+          <li><b>Simbol</b>: cari ikut nama atau kategori di panel kanan, klik simbol, tekan R untuk putar, klik pada lukisan untuk letak.</li>
+          <li><b>Pustaka simbol</b>: setiap kali PDF atau projek dibuka, simbol di dalamnya dikesan dan boleh disimpan mengikut kategori. Untuk simpan sendiri: pilih objek simbol, tekan <b>Simpan pilihan</b>. Butang ✎ untuk tukar nama/kategori atau padam.</li>
           <li><b>Salin satu bahagian</b> (cth Motor 4): pilih dengan kotak, tekan Salin, klik titik asas, klik destinasi.</li>
-          <li>Kerja disimpan automatik dalam pelayar ini. <b>Eksport PDF</b> untuk cetak, <b>Eksport DXF</b> untuk AutoCAD.</li>
+          <li>Kerja dan pustaka simbol disimpan automatik dalam pelayar ini. <b>Baru</b> untuk kosongkan kanvas. <b>Eksport PDF</b> untuk cetak, <b>Eksport DXF</b> untuk AutoCAD, <b>Eksport pustaka</b> untuk pindah simbol ke komputer lain.</li>
         </ol>
         <button type="button" id="helpClose" class="pri">Faham, tutup</button>
       </section>
@@ -100,12 +112,27 @@
       </div>
     </section>
     <section class="card grow">
-      <h3>Simbol elektrik</h3>
+      <h3>Simbol elektrik <span id="symCount" class="muted small"></span></h3>
+      <div class="symtools">
+        <input id="symSearch" type="search" placeholder="Cari simbol, cth kontak, K1, motor" aria-label="Cari simbol" spellcheck="false">
+        <select id="symCat" aria-label="Kategori simbol"></select>
+      </div>
+      <div class="btnrow">
+        <button type="button" data-act="symsave" title="Simpan objek terpilih sebagai simbol dalam pustaka">Simpan pilihan</button>
+        <button type="button" data-act="symdetect" title="Kesan simbol dalam lukisan semasa dan simpan ke pustaka">Kesan simbol</button>
+      </div>
       <div id="symList" class="symlist"></div>
+      <div class="btnrow">
+        <button type="button" data-act="libexport" title="Muat turun pustaka simbol anda (.json)">Eksport pustaka</button>
+        <button type="button" data-act="libimport" title="Tambah simbol dari fail pustaka (.json)">Import pustaka</button>
+      </div>
+      <input id="libIn" type="file" accept=".json,application/json" hidden>
     </section>
   </aside>
 </div>
-<script src="drawings/qlwb.js"></script>
+<div id="modal" class="modal" hidden><div class="modalbox" role="dialog" aria-modal="true"></div></div>
+<script src="library/simbol.js"></script>
+<script src="js/capture.js"></script>
 <script src="js/importer.js"></script>
 <script src="js/symbols.js"></script>
 <script src="js/exporters.js"></script>

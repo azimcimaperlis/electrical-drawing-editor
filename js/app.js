@@ -4,7 +4,8 @@
   const $ = s => document.querySelector(s);
   const cv = $('#cv'), ctx = cv.getContext('2d');
   const wrap = $('#canvasWrap');
-  const STORE_KEY = 'elec-editor-doc-v1';
+  const STORE_KEY = 'elec-editor-doc-v2';
+  const LIB_KEY = 'elec-editor-symlib-v1';
   const FONT_SANS = 'Helvetica, Arial, "Liberation Sans", sans-serif';
   const FONT_SERIF = '"Times New Roman", Times, "Liberation Serif", serif';
   const SEL_COLOR = '#1f6feb', SNAP_COLOR = '#0a8f3c', HOVER_COLOR = '#e8590c';
@@ -69,6 +70,7 @@
   let saveTimer = null;
   function changed(noSave) {
     updatePanel();
+    updateEmpty();
     draw();
     if (!noSave) { clearTimeout(saveTimer); saveTimer = setTimeout(autosave, 600); }
   }
@@ -702,6 +704,7 @@
 
   // ---------------- keyboard ----------------
   document.addEventListener('keydown', ev => {
+    if (!$('#modal').hidden) { if (ev.key === 'Escape') closeModal(); return; }
     const tag = (ev.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
     const k = ev.key, ctrl = ev.ctrlKey || ev.metaKey;
@@ -872,12 +875,14 @@
         const d = await PdfImport.importPdf(lib, new Uint8Array(buf), { name });
         setDoc(d); autosave();
         toast('PDF diimport: ' + d.entities.length + ' objek');
+        runCapture(true);
       }).catch(err => { console.error(err); toast('Gagal baca PDF: ' + err.message, 6000); });
     } else {
       file.text().then(t => {
         let d = JSON.parse(t);
         if (!d.entities || !d.sheet) throw new Error('Bukan fail projek editor');
         setDoc(d); autosave(); toast('Projek dibuka: ' + (d.name || name));
+        runCapture(true);
       }).catch(err => toast('Gagal buka fail: ' + err.message, 6000));
     }
   }
@@ -910,43 +915,286 @@
     const t = $('#toast'); t.textContent = msg; t.hidden = false;
     clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, ms || 2200);
   }
+  // ---------------- blank document & empty state ----------------
+  let emptyDismissed = false;
+  function blankDoc() { return { version: 1, name: 'Lukisan baru', sheet: { w: 420, h: 297 }, entities: [] }; }
+  function updateEmpty() {
+    const el = $('#empty');
+    if (el) el.hidden = !(doc && !doc.entities.length && !emptyDismissed);
+  }
+  function newDoc() {
+    const b = $('[data-act="newdoc"]');
+    const go = () => { setDoc(blankDoc()); emptyDismissed = false; autosave(); updateEmpty(); toast('Kanvas dikosongkan'); };
+    if (!doc.entities.length) return go();
+    if (b.dataset.armed) { delete b.dataset.armed; b.textContent = 'Baru'; go(); return; }
+    b.dataset.armed = '1'; b.textContent = 'Pasti? Klik lagi';
+    toast('Lukisan semasa akan dikosongkan. Simpan projek dahulu jika perlu. Klik "Pasti?" untuk teruskan.', 3500);
+    setTimeout(() => { delete b.dataset.armed; b.textContent = 'Baru'; }, 3500);
+  }
+
+  // ---------------- symbol library ----------------
+  const CATS = SymbolCapture.CATEGORIES;
+  let userLib = [], sharedLib = [];
+  const sigOf = s => s.sig || (s.sig = SymbolCapture.signature(s.ents));
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  function loadLibs() {
+    try { const o = JSON.parse(localStorage.getItem(LIB_KEY) || 'null'); userLib = o && Array.isArray(o.symbols) ? o.symbols.filter(validSym) : []; } catch (e) { userLib = []; }
+    const sh = window.SHARED_SYMBOLS;
+    sharedLib = sh && Array.isArray(sh.symbols) ? sh.symbols.filter(validSym) : [];
+  }
+  function saveUserLib() {
+    try { localStorage.setItem(LIB_KEY, JSON.stringify({ version: 1, symbols: userLib })); return true; }
+    catch (e) { toast('Pustaka tidak dapat disimpan dalam pelayar ini', 4000); return false; }
+  }
+  function validSym(s) { return s && Array.isArray(s.ents) && s.ents.length && typeof s.name === 'string'; }
+  function allSymbols() {
+    const u = userLib.map(s => ({ id: 'u:' + s.id, name: s.name, cat: s.cat || 'Lain-lain', ents: s.ents, kind: 'user', src: s.src, ref: s }));
+    const sh = sharedLib.map((s, i) => ({ id: 's:' + (s.id || i), name: s.name, cat: s.cat || 'Lain-lain', ents: s.ents, kind: 'shared', src: s.src }));
+    const b = Symbols.map(s => ({ id: 'b:' + s.id, name: s.name, cat: s.cat || 'Lain-lain', ents: s.draw(), kind: 'builtin' }));
+    return [...u, ...sh, ...b];
+  }
+  function catOrder(list) {
+    const extra = [...new Set(list)].filter(c => !CATS.includes(c)).sort((a, b) => a.localeCompare(b));
+    const base = CATS.filter(c => c !== 'Lain-lain');
+    return [...base, ...extra, 'Lain-lain'].filter(c => list.includes(c));
+  }
+  function allCats() { return catOrder([...CATS, ...userLib.map(s => s.cat || 'Lain-lain'), ...sharedLib.map(s => s.cat || 'Lain-lain')]); }
+  function symThumb(ents, size) {
+    size = size || 96;
+    const c = document.createElement('canvas'); c.width = size; c.height = size;
+    let bb = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const e of ents) { const q = bbox(e); bb = [Math.min(bb[0], q[0]), Math.min(bb[1], q[1]), Math.max(bb[2], q[2]), Math.max(bb[3], q[3])]; }
+    const m = size * 0.84, bw = bb[2] - bb[0], bh = bb[3] - bb[1], sc = Math.min(m / Math.max(bw, 1), m / Math.max(bh, 1), size / 10);
+    const T = { s: sc, ox: size / 2 - (bb[0] + bw / 2) * sc, oy: size / 2 + (bb[1] + bh / 2) * sc };
+    const g = c.getContext('2d'); g.lineWidth = Math.max(1.5, size / 48); g.lineCap = 'round';
+    const col = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim() || '#111';
+    for (const e of ents) drawEnt(g, e, T, e.fill ? null : col);
+    return c;
+  }
   function buildSymbols() {
     const box = $('#symList');
-    for (const s of Symbols) {
-      const b = document.createElement('button');
-      b.className = 'sym'; b.dataset.sym = s.id; b.title = s.name; b.type = 'button';
-      const c = document.createElement('canvas'); c.width = 96; c.height = 96;
-      const ents = s.draw();
-      let bb = [Infinity, Infinity, -Infinity, -Infinity];
-      for (const e of ents) { const q = bbox(e); bb = [Math.min(bb[0], q[0]), Math.min(bb[1], q[1]), Math.max(bb[2], q[2]), Math.max(bb[3], q[3])]; }
-      const bw = bb[2] - bb[0], bh = bb[3] - bb[1], sc = Math.min(80 / Math.max(bw, 1), 80 / Math.max(bh, 1), 9);
-      const T = { s: sc, ox: 48 - (bb[0] + bw / 2) * sc, oy: 48 + (bb[1] + bh / 2) * sc };
-      const g = c.getContext('2d'); g.lineWidth = 2; g.lineCap = 'round';
-      const col = getComputedStyle(document.documentElement).getPropertyValue('--fg').trim() || '#111';
-      for (const e of ents) drawEnt(g, e, T, e.fill ? null : col);
-      const sp = document.createElement('span'); sp.textContent = s.name;
-      b.append(c, sp);
-      b.onclick = () => setTool('symbol', { symId: s.id, ents: s.draw(), rot: 0 });
-      box.appendChild(b);
+    const all = allSymbols();
+    const cats = catOrder(all.map(s => s.cat));
+    const selCat = $('#symCat');
+    const cur = selCat.value;
+    selCat.innerHTML = '<option value="">Semua kategori (' + all.length + ')</option>' +
+      cats.map(c => '<option value="' + esc(c) + '">' + esc(c) + ' (' + all.filter(s => s.cat === c).length + ')</option>').join('');
+    selCat.value = cats.includes(cur) ? cur : '';
+    const q = $('#symSearch').value.trim().toLowerCase(), cf = selCat.value;
+    const words = q.split(/\s+/).filter(Boolean);
+    const list = all.filter(s => (!cf || s.cat === cf) && words.every(w => (s.name + ' ' + s.cat + ' ' + (s.src || '')).toLowerCase().includes(w)));
+    $('#symCount').textContent = list.length === all.length ? all.length + '' : list.length + ' / ' + all.length;
+    box.innerHTML = '';
+    if (!list.length) { box.innerHTML = '<p class="muted">Tiada simbol sepadan dengan carian.</p>'; return; }
+    for (const cat of cats) {
+      const items = list.filter(s => s.cat === cat);
+      if (!items.length) continue;
+      const grp = document.createElement('div'); grp.className = 'symgroup';
+      const h = document.createElement('h4'); h.innerHTML = '<span>' + esc(cat) + '</span><span class="muted">' + items.length + '</span>';
+      const grid = document.createElement('div'); grid.className = 'symgrid';
+      for (const s of items) {
+        const w = document.createElement('div'); w.className = 'symwrap';
+        const b = document.createElement('button');
+        b.className = 'sym' + (s.kind === 'user' ? ' mine' : ''); b.dataset.sym = s.id; b.type = 'button';
+        b.title = s.name + (s.kind === 'user' ? ' — pustaka anda' : s.kind === 'shared' ? ' — pustaka bersama' : '') + (s.src ? ' (dari ' + s.src + ')' : '');
+        const sp = document.createElement('span'); sp.textContent = s.name;
+        b.append(symThumb(s.ents), sp);
+        b.onclick = () => setTool('symbol', { symId: s.id, ents: clone(s.ents), rot: 0 });
+        w.appendChild(b);
+        if (s.kind === 'user') {
+          const ed = document.createElement('button');
+          ed.type = 'button'; ed.className = 'symedit'; ed.textContent = '✎'; ed.title = 'Tukar nama / kategori atau padam'; ed.setAttribute('aria-label', 'Edit ' + s.name);
+          ed.onclick = () => editSymbol(s.ref);
+          w.appendChild(ed);
+        }
+        grid.appendChild(w);
+      }
+      grp.append(h, grid); box.appendChild(grp);
     }
+    if (tool.name === 'symbol') document.querySelectorAll('.sym').forEach(b => b.classList.toggle('on', b.dataset.sym === tool.symId));
+  }
+
+  // ---------------- modal ----------------
+  function openModal(html) {
+    const m = $('#modal'), box = m.querySelector('.modalbox');
+    box.innerHTML = html; m.hidden = false;
+    const f = box.querySelector('input[type=text], button.pri'); if (f) setTimeout(() => f.focus(), 30);
+    return box;
+  }
+  function closeModal() { const m = $('#modal'); m.hidden = true; m.querySelector('.modalbox').innerHTML = ''; cv.focus(); }
+  const catList = id => '<datalist id="' + id + '">' + allCats().map(c => '<option value="' + esc(c) + '">').join('') + '</datalist>';
+
+  // ---------------- save / edit a single symbol ----------------
+  function anchorOf(ents) {
+    const pts = [];
+    for (const e of ents) {
+      if (e.t === 'line') pts.push([e.x1, e.y1], [e.x2, e.y2]);
+      else if (e.t === 'pline') pts.push(...e.pts);
+    }
+    let bb = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const e of ents) { const q = bbox(e); bb = [Math.min(bb[0], q[0]), Math.min(bb[1], q[1]), Math.max(bb[2], q[2]), Math.max(bb[3], q[3])]; }
+    const cx = (bb[0] + bb[2]) / 2;
+    if (!pts.length) return [rr(cx), rr((bb[1] + bb[3]) / 2)];
+    pts.sort((a, b) => (b[1] - a[1]) || (Math.abs(a[0] - cx) - Math.abs(b[0] - cx)));
+    return [rr(pts[0][0]), rr(pts[0][1])];
+  }
+  function saveSelAsSymbol() {
+    if (!sel.size) return toast('Pilih objek simbol pada lukisan dahulu (seret kotak sekelilingnya), kemudian tekan Simpan pilihan', 4500);
+    const src = [...sel].map(id => clone(byId.get(id))).filter(e => e && e.t !== 'path');
+    if (!src.length) return toast('Objek terpilih tidak boleh dijadikan simbol');
+    const a = anchorOf(src);
+    const ents = src.map(e => { delete e.id; delete e.gid; moveEnt(e, -a[0], -a[1]); return e; });
+    let guess = null;
+    try { guess = SymbolCapture.detect({ entities: src })[0] || null; } catch (e) { guess = null; }
+    symbolDialog({ title: 'Simpan sebagai simbol', ents, name: guess ? guess.name : '', cat: guess ? guess.cat : '' }, (name, cat) => {
+      const dup = findDup(ents);
+      if (dup) { toast('Simbol ini sudah ada dalam pustaka: ' + dup.name, 4000); return false; }
+      userLib.unshift({ id: uid(), name, cat, ents, src: doc.name || '', created: new Date().toISOString().slice(0, 10), sig: SymbolCapture.signature(ents) });
+      if (!saveUserLib()) return false;
+      buildSymbols(); toast('Disimpan ke pustaka: ' + name + ' (' + cat + ')');
+      return true;
+    });
+  }
+  function editSymbol(ref) {
+    symbolDialog({ title: 'Edit simbol', ents: ref.ents, name: ref.name, cat: ref.cat, canDelete: true }, (name, cat, del) => {
+      if (del) userLib = userLib.filter(s => s !== ref);
+      else { ref.name = name; ref.cat = cat; }
+      saveUserLib(); buildSymbols();
+      toast(del ? 'Simbol dipadam: ' + ref.name : 'Simbol dikemas kini');
+      return true;
+    });
+  }
+  function findDup(ents) {
+    const s = SymbolCapture.signature(ents);
+    return userLib.find(x => sigOf(x) === s) || sharedLib.find(x => sigOf(x) === s) || null;
+  }
+  function symbolDialog(o, onOk) {
+    const box = openModal(
+      '<h2>' + esc(o.title) + '</h2>' +
+      '<div class="dlgrow"><div class="dlgthumb"></div><div class="dlgfields">' +
+      '<label class="fld"><span>Nama simbol</span><input id="dName" type="text" value="' + esc(o.name || '') + '" placeholder="cth Kontak NO K1"></label>' +
+      '<label class="fld"><span>Kategori (pilih atau taip kategori baru)</span><input id="dCat" type="text" list="dCats" value="' + esc(o.cat || '') + '" placeholder="Lain-lain"></label>' + catList('dCats') +
+      '<p class="muted small">Titik merah = titik letak (anchor) semasa simbol diletak.</p>' +
+      '</div></div>' +
+      '<div class="btnrow">' + (o.canDelete ? '<button type="button" data-x="del" class="danger">Padam simbol</button>' : '') +
+      '<span class="sp"></span><button type="button" data-x="cancel">Batal</button><button type="button" class="pri" data-x="ok">Simpan</button></div>');
+    const th = symThumb(o.ents, 160);
+    markAnchor(th, o.ents, 160);
+    box.querySelector('.dlgthumb').appendChild(th);
+    const done = del => {
+      const name = box.querySelector('#dName').value.trim() || 'Simbol baru';
+      const cat = box.querySelector('#dCat').value.trim() || 'Lain-lain';
+      if (onOk(name, cat, del) !== false) closeModal();
+    };
+    box.querySelector('[data-x="ok"]').onclick = () => done(false);
+    box.querySelector('[data-x="cancel"]').onclick = closeModal;
+    box.querySelectorAll('input[type=text]').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') done(false); }));
+    const d = box.querySelector('[data-x="del"]');
+    if (d) d.onclick = () => { if (d.dataset.armed) done(true); else { d.dataset.armed = '1'; d.textContent = 'Pasti padam?'; } };
+  }
+  function markAnchor(c, ents, size) {
+    let bb = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const e of ents) { const q = bbox(e); bb = [Math.min(bb[0], q[0]), Math.min(bb[1], q[1]), Math.max(bb[2], q[2]), Math.max(bb[3], q[3])]; }
+    const m = size * 0.84, bw = bb[2] - bb[0], bh = bb[3] - bb[1], sc = Math.min(m / Math.max(bw, 1), m / Math.max(bh, 1), size / 10);
+    const g = c.getContext('2d'); g.fillStyle = '#e03131';
+    g.beginPath(); g.arc(size / 2 - (bb[0] + bw / 2) * sc, size / 2 + (bb[1] + bh / 2) * sc, Math.max(2.5, size / 40), 0, Math.PI * 2); g.fill();
+  }
+
+  // ---------------- automatic capture on file open ----------------
+  function runCapture(auto) {
+    let found;
+    try { found = SymbolCapture.detect(doc); } catch (e) { console.error(e); if (!auto) toast('Gagal kesan simbol: ' + e.message, 5000); return; }
+    if (!found.length) { if (!auto) toast('Tiada simbol elektrik dikesan dalam lukisan ini', 3500); return; }
+    const known = new Set([...userLib, ...sharedLib].map(sigOf));
+    const fresh = found.filter(f => !known.has(f.sig));
+    if (!fresh.length) { toast(found.length + ' simbol dikesan — semuanya sudah ada dalam pustaka', 3500); return; }
+    captureDialog(fresh, found.length - fresh.length);
+  }
+  function captureDialog(items, already) {
+    const box = openModal(
+      '<h2>' + items.length + ' simbol baru dikesan dalam "' + esc(doc.name || 'lukisan') + '"</h2>' +
+      '<p class="muted">Semak nama dan kategori, nyahtanda yang bukan simbol, kemudian simpan ke pustaka.' + (already ? ' ' + already + ' lagi sudah ada dalam pustaka.' : '') + '</p>' +
+      '<div class="caplist">' + items.map((f, i) =>
+        '<div class="capitem" data-i="' + i + '"><input type="checkbox" checked aria-label="Simpan simbol ' + (i + 1) + '"><div class="capthumb"></div><div class="capf">' +
+        '<input type="text" class="capname" value="' + esc(f.name) + '" aria-label="Nama">' +
+        '<input type="text" class="capcat" list="capCats" value="' + esc(f.cat) + '" aria-label="Kategori">' +
+        '<span class="muted small">×' + f.count + ' dalam lukisan</span></div></div>').join('') + '</div>' + catList('capCats') +
+      '<div class="btnrow"><button type="button" data-x="all">Tanda semua</button><button type="button" data-x="none">Nyahtanda semua</button>' +
+      '<span class="sp"></span><button type="button" data-x="cancel">Langkau</button><button type="button" class="pri" data-x="ok"></button></div>');
+    const rows = [...box.querySelectorAll('.capitem')];
+    rows.forEach((r, i) => r.querySelector('.capthumb').appendChild(symThumb(items[i].ents, 72)));
+    const ok = box.querySelector('[data-x="ok"]');
+    const upd = () => { let n = 0; rows.forEach(r => { const on = r.querySelector('input[type=checkbox]').checked; r.classList.toggle('off', !on); if (on) n++; }); ok.textContent = 'Simpan ke pustaka (' + n + ')'; ok.disabled = !n; };
+    rows.forEach(r => r.querySelector('input[type=checkbox]').onchange = upd);
+    box.querySelector('[data-x="all"]').onclick = () => { rows.forEach(r => { r.querySelector('input[type=checkbox]').checked = true; }); upd(); };
+    box.querySelector('[data-x="none"]').onclick = () => { rows.forEach(r => { r.querySelector('input[type=checkbox]').checked = false; }); upd(); };
+    box.querySelector('[data-x="cancel"]').onclick = closeModal;
+    ok.onclick = () => {
+      const day = new Date().toISOString().slice(0, 10);
+      let n = 0;
+      rows.forEach((r, i) => {
+        if (!r.querySelector('input[type=checkbox]').checked) return;
+        const f = items[i];
+        userLib.push({ id: uid(), name: r.querySelector('.capname').value.trim() || f.name, cat: r.querySelector('.capcat').value.trim() || 'Lain-lain', ents: f.ents, src: doc.name || '', created: day, sig: f.sig });
+        n++;
+      });
+      if (!saveUserLib()) return;
+      closeModal(); buildSymbols();
+      toast(n + ' simbol disimpan ke pustaka', 3000);
+    };
+    upd();
+  }
+
+  // ---------------- library export / import ----------------
+  function exportLib() {
+    if (!userLib.length) return toast('Pustaka anda masih kosong. Buka PDF atau simpan pilihan sebagai simbol dahulu.', 4000);
+    const out = { version: 1, kind: 'elec-symbol-library', symbols: userLib.map(s => ({ name: s.name, cat: s.cat, ents: s.ents, src: s.src, created: s.created })) };
+    saveFile('pustaka-simbol.json', JSON.stringify(out), 'application/json');
+  }
+  function importLib(file) {
+    file.text().then(t => {
+      const o = JSON.parse(t);
+      const list = Array.isArray(o) ? o : o.symbols;
+      if (!Array.isArray(list)) throw new Error('Bukan fail pustaka simbol');
+      const known = new Set([...userLib, ...sharedLib].map(sigOf));
+      let n = 0, skip = 0;
+      for (const s of list) {
+        if (!validSym(s)) { skip++; continue; }
+        const sig = SymbolCapture.signature(s.ents);
+        if (known.has(sig)) { skip++; continue; }
+        known.add(sig);
+        userLib.push({ id: uid(), name: s.name, cat: s.cat || 'Lain-lain', ents: s.ents, src: s.src || '', created: s.created || new Date().toISOString().slice(0, 10), sig });
+        n++;
+      }
+      if (n && !saveUserLib()) return;
+      buildSymbols();
+      toast(n + ' simbol diimport' + (skip ? ', ' + skip + ' dilangkau (sudah ada / tidak sah)' : ''), 4000);
+    }).catch(err => toast('Gagal import pustaka: ' + err.message, 5000));
   }
   function wire() {
     document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
     const act = { undo, redo, del: delSel, rot: () => rotateSel(90), mirror: mirrorSel, copyc: () => setTool('copy'), fit: zoomFit, group: groupSel, ungroup: ungroupSel,
       zin: () => zoomAt(W / 2, H / 2, 1.4), zout: () => zoomAt(W / 2, H / 2, 1 / 1.4),
       open: () => $('#fileIn').click(), save: saveProject, pdf: exportPDF, dxf: exportDXF,
-      reset: () => { const b = $('[data-act="reset"]'); if (b.dataset.armed) { delete b.dataset.armed; b.textContent = 'Asal'; loadDefault().then(dd => { if (dd) { setDoc(dd); autosave(); toast('Lukisan asal dimuat semula'); } }); } else { b.dataset.armed = '1'; b.textContent = 'Pasti? Klik lagi'; toast('Semua perubahan akan hilang. Klik "Pasti?" sekali lagi untuk teruskan.', 3500); setTimeout(() => { delete b.dataset.armed; b.textContent = 'Asal'; }, 3500); } },
+      newdoc: newDoc, blank: () => { emptyDismissed = true; updateEmpty(); setTool('line'); },
+      sample: () => loadDefault().then(dd => { if (dd) { setDoc(dd); autosave(); toast('Contoh QLWB dibuka'); } else toast('Contoh tidak tersedia di luar talian', 3500); }),
+      symsave: saveSelAsSymbol, symdetect: () => runCapture(false), libexport: exportLib, libimport: () => $('#libIn').click(),
       help: () => { $('#help').hidden = !$('#help').hidden; },
       find: findText, repl: replaceText };
     document.querySelectorAll('[data-act]').forEach(b => b.onclick = () => act[b.dataset.act]());
     ['snap', 'ortho', 'grid'].forEach(k => { const b = $('#tg-' + k); b.classList.toggle('on', opt[k]); b.onclick = () => toggle(k); });
     $('#fileIn').onchange = e => { const f = e.target.files[0]; if (f) openFile(f); e.target.value = ''; };
+    $('#libIn').onchange = e => { const f = e.target.files[0]; if (f) importLib(f); e.target.value = ''; };
+    $('#symSearch').addEventListener('input', buildSymbols);
+    $('#symCat').onchange = buildSymbols;
+    $('#modal').addEventListener('pointerdown', e => { if (e.target.id === 'modal') closeModal(); });
     $('#docName').onchange = e => { doc.name = e.target.value; autosave(); };
     $('#findTxt').addEventListener('keydown', e => { if (e.key === 'Enter') findText(); });
     $('#helpClose').onclick = () => { $('#help').hidden = true; try { localStorage.setItem('elec-editor-help-seen', '1'); } catch (e) { /* ignore */ } };
     wrap.addEventListener('dragover', e => e.preventDefault());
     wrap.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) openFile(f); });
     new ResizeObserver(resize).observe(wrap);
+    window.addEventListener('pagehide', () => { if (saveTimer) { clearTimeout(saveTimer); autosave(); } });
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const re = () => { readCss(); draw(); };
     mq.addEventListener && mq.addEventListener('change', re);
@@ -957,17 +1205,16 @@
   function boot() {
     readCss();
     wire();
+    loadLibs();
     buildSymbols();
     resize();
     let d = null;
     try { const s = localStorage.getItem(STORE_KEY); if (s) d = JSON.parse(s); } catch (e) { d = null; }
-    setDoc({ version: 1, name: 'Lukisan baru', sheet: { w: 420, h: 297 }, entities: [] });
-    if (d && d.entities) { setDoc(d); toast('Kerja terakhir dimuat semula dari pelayar'); }
-    else loadDefault().then(dd => { if (dd) setDoc(dd); });
-    let seen = false; try { seen = !!localStorage.getItem('elec-editor-help-seen'); } catch (e) { /* ignore */ }
-    $('#help').hidden = seen;
+    setDoc(blankDoc());
+    if (d && d.entities && d.entities.length) { setDoc(d); toast('Kerja terakhir dimuat semula dari pelayar'); }
+    $('#help').hidden = true;
     setTool('select');
   }
-  window.ElecEditor = { get doc() { return doc; }, setDoc, select: ids => { sel = new Set(ids); updatePanel(); draw(); }, view: () => view, toPDF: () => Exporters.toPDF(doc, measure), toDXF: () => Exporters.toDXF(doc, measure) };
+  window.ElecEditor = { get doc() { return doc; }, get library() { return userLib; }, runCapture, setDoc, select: ids => { sel = new Set(ids); updatePanel(); draw(); }, view: () => view, toPDF: () => Exporters.toPDF(doc, measure), toDXF: () => Exporters.toDXF(doc, measure) };
   boot();
 })();

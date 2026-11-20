@@ -112,13 +112,60 @@ button.pri { background: var(--accent); color: var(--accent-fg); border-color: v
 .chip { display: inline-block; background: var(--accent-soft); border-radius: 10px; padding: 1px 8px; font-size: 12px; margin: 0 2px 2px 0; }
 .kinds { line-height: 1.8; }
 .btnrow { display: flex; gap: 6px; flex-wrap: wrap; }
-.symlist { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.symtools { display: grid; gap: 6px; }
+.symtools input, .symtools select { border: 1px solid var(--line); background: var(--bg); border-radius: 5px; padding: 5px 7px; color: var(--fg); width: 100%; min-width: 0; font-size: 13px; }
+.symlist { display: grid; gap: 12px; align-content: start; }
+.symgroup h4 { margin: 0 0 6px; font-size: 12px; font-weight: 600; display: flex; justify-content: space-between; gap: 6px; }
+.symgroup h4 .muted { font-weight: 400; font-variant-numeric: tabular-nums; }
+.symgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.symwrap { position: relative; display: grid; }
 .sym {
-  display: grid; justify-items: center; gap: 2px; padding: 6px 3px; border: 1px solid var(--line); background: var(--bg); border-radius: 6px; font-size: 10.5px; line-height: 1.2; text-align: center; color: var(--muted);
+  display: grid; justify-items: center; gap: 2px; padding: 6px 3px; border: 1px solid var(--line); background: var(--bg); border-radius: 6px; font-size: 10.5px; line-height: 1.2; text-align: center; color: var(--muted); overflow-wrap: anywhere;
 }
+.sym.mine { border-left: 3px solid var(--accent); }
+.symedit {
+  position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; padding: 0; line-height: 1; font-size: 12px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 4px; opacity: .55;
+}
+.symwrap:hover .symedit, .symedit:focus-visible { opacity: 1; border-color: var(--accent); }
 .sym canvas { width: 40px; height: 40px; }
 .sym:hover { border-color: var(--accent); color: var(--fg); }
 .sym.on { border-color: var(--accent); background: var(--accent-soft); color: var(--fg); }
+
+.btnrow .sp { flex: 1; }
+button.link { border: 0; background: none; color: var(--accent); padding: 0; text-decoration: underline; font-size: inherit; }
+button.danger { color: #c92a2a; }
+button:disabled { opacity: .5; cursor: default; }
+
+.empty { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; padding: 16px; pointer-events: none; }
+.empty[hidden] { display: none; }
+.emptycard {
+  pointer-events: auto; width: min(440px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 20px 22px; display: grid; gap: 12px; box-shadow: 0 8px 30px var(--sheet-shadow);
+}
+.emptycard h2 { margin: 0; font-size: 18px; }
+.emptycard p { margin: 0; font-size: 13.5px; }
+
+.modal { position: fixed; inset: 0; z-index: 30; background: rgba(10, 15, 22, .5); display: grid; place-items: center; padding: 16px; }
+.modal[hidden] { display: none; }
+.modalbox {
+  width: min(760px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 18px 20px; display: grid; gap: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, .35);
+}
+.modalbox h2 { margin: 0; font-size: 17px; }
+.modalbox p { margin: 0; font-size: 13px; }
+.modalbox .btnrow button { border: 1px solid var(--line); background: var(--bg); padding: 6px 12px; border-radius: 5px; }
+.modalbox .btnrow button.pri { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.dlgrow { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 16px; align-items: start; }
+.dlgthumb canvas, .capthumb canvas { display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.dlgthumb canvas { width: 160px; height: 160px; }
+.dlgfields { display: grid; gap: 10px; }
+.caplist { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.capitem { display: grid; grid-template-columns: auto 72px minmax(0, 1fr); gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: var(--bg); }
+.capitem.off { opacity: .45; }
+.capthumb canvas { width: 72px; height: 72px; }
+.capf { display: grid; gap: 4px; min-width: 0; }
+.capf input, .dlgfields input { border: 1px solid var(--line); background: var(--panel); border-radius: 4px; padding: 4px 6px; color: var(--fg); font-size: 12.5px; width: 100%; min-width: 0; }
 
 @media (max-width: 860px) {
   body { overflow: auto; }
@@ -126,5 +173,6 @@ button.pri { background: var(--accent); color: var(--accent-fg); border-color: v
   .side { border-left: 0; border-top: 1px solid var(--line); }
   .status .hint { display: none; }
   .mono { min-width: 0; }
+  .dlgrow { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

@@ -17,7 +17,7 @@ def inline_js(m):
         return ''
     code = (root / src).read_text(encoding='utf-8').replace('</script', '<\\/script')
     return '<script>\n' + code + '\n</script>'
-html = re.sub(r'<script src="((?:js|drawings)/[^"]+)"></script>', inline_js, html)
+html = re.sub(r'<script src="((?:js|drawings|library)/[^"]+)"></script>', inline_js, html)
 
 if artifact:
     for pat in [r'<!doctype html>\n', r'<html[^>]*>\n', r'<head>\n', r'<meta charset[^>]*>\n', r'<meta name="viewport"[^>]*>\n', r'</head>\n', r'<body>\n', r'</body>\n', r'</html>\n?']:
